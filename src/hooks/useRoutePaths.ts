@@ -1,7 +1,13 @@
 import { useApiIsLoaded } from '@vis.gl/react-google-maps'
 import { useEffect, useState } from 'react'
 import { pickDirectionsRoute } from '../lib/compareUtils'
-import type { CommuteResult, LocationPoint, RoutePreference, TravelMode } from '../types'
+import type {
+  CommuteResult,
+  LocationPoint,
+  RoutePreference,
+  TravelMode,
+  TripDirection,
+} from '../types'
 
 export interface RoutePath {
   id: string
@@ -9,6 +15,7 @@ export interface RoutePath {
   color: string
   durationText: string
   isBest: boolean
+  direction: TripDirection
 }
 
 const ROUTE_COLORS = ['#059669', '#2563eb', '#7c3aed', '#db2777', '#ea580c', '#0891b2']
@@ -53,26 +60,23 @@ function extractPath(route: google.maps.DirectionsRoute): google.maps.LatLngLite
 }
 
 function straightLinePath(
-  home: LocationPoint,
-  work: LocationPoint,
+  from: google.maps.LatLngLiteral,
+  to: google.maps.LatLngLiteral,
 ): google.maps.LatLngLiteral[] {
-  return [
-    { lat: home.lat, lng: home.lng },
-    { lat: work.lat, lng: work.lng },
-  ]
+  return [from, to]
 }
 
 function fetchRoute(
   service: google.maps.DirectionsService,
-  home: LocationPoint,
-  work: LocationPoint,
+  origin: google.maps.LatLngLiteral,
+  destination: google.maps.LatLngLiteral,
   travelMode: TravelMode,
   routePreference: RoutePreference,
 ): Promise<google.maps.LatLngLiteral[]> {
   return new Promise((resolve) => {
     const request: google.maps.DirectionsRequest = {
-      origin: { lat: home.lat, lng: home.lng },
-      destination: { lat: work.lat, lng: work.lng },
+      origin,
+      destination,
       travelMode: travelModeToGoogle(travelMode),
       region: 'my',
       provideRouteAlternatives:
@@ -99,7 +103,7 @@ function fetchRoute(
           // fall through to straight line
         }
       }
-      resolve(straightLinePath(home, work))
+      resolve(straightLinePath(origin, destination))
     })
   })
 }
@@ -110,6 +114,7 @@ export function useRoutePaths(
   results: CommuteResult[],
   travelMode: TravelMode,
   routePreference: RoutePreference,
+  showReturnTrip: boolean,
 ): RoutePath[] {
   const [routes, setRoutes] = useState<RoutePath[]>([])
   const apiLoaded = useApiIsLoaded()
@@ -123,39 +128,61 @@ export function useRoutePaths(
     let cancelled = false
     const service = new google.maps.DirectionsService()
     const okResults = results.filter((r) => r.status === 'OK')
+    const workPoint = { lat: work.lat, lng: work.lng }
 
     void (async () => {
-      const fetched = await Promise.all(
-        okResults.map(async (result, index) => {
-          const home = homes.find((h) => h.id === result.homeId)
-          if (!home) return null
+      const fetched: RoutePath[] = []
 
-          const path = await fetchRoute(
+      for (const [index, result] of okResults.entries()) {
+        const home = homes.find((h) => h.id === result.homeId)
+        if (!home) continue
+
+        const color = ROUTE_COLORS[index % ROUTE_COLORS.length]
+        const homePoint = { lat: home.lat, lng: home.lng }
+        const isBest = index === 0
+
+        const outboundPath = await fetchRoute(
+          service,
+          homePoint,
+          workPoint,
+          travelMode,
+          routePreference,
+        )
+        fetched.push({
+          id: `${result.homeId}-outbound`,
+          path: outboundPath,
+          color,
+          durationText: result.durationText,
+          isBest,
+          direction: 'OUTBOUND',
+        })
+
+        if (showReturnTrip && result.returnStatus === 'OK') {
+          const returnPath = await fetchRoute(
             service,
-            home,
-            work,
+            workPoint,
+            homePoint,
             travelMode,
             routePreference,
           )
-          return {
-            id: result.homeId,
-            path,
-            color: ROUTE_COLORS[index % ROUTE_COLORS.length],
-            durationText: result.durationText,
-            isBest: index === 0,
-          } satisfies RoutePath
-        }),
-      )
-
-      if (!cancelled) {
-        setRoutes(fetched.filter((r): r is RoutePath => r !== null))
+          fetched.push({
+            id: `${result.homeId}-return`,
+            path: returnPath,
+            color,
+            durationText: result.returnDurationText ?? '—',
+            isBest,
+            direction: 'RETURN',
+          })
+        }
       }
+
+      if (!cancelled) setRoutes(fetched)
     })()
 
     return () => {
       cancelled = true
     }
-  }, [apiLoaded, work, homes, results, travelMode, routePreference])
+  }, [apiLoaded, work, homes, results, travelMode, routePreference, showReturnTrip])
 
   return routes
 }

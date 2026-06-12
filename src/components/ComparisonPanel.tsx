@@ -6,6 +6,7 @@ interface ComparisonPanelProps {
   homes: LocationPoint[]
   work: LocationPoint | null
   rankBy: RankBy
+  showReturnTrip: boolean
   loading: boolean
   error: string | null
   onRemoveHome: (id: string) => void
@@ -76,6 +77,7 @@ export function ComparisonPanel({
   homes,
   work,
   rankBy,
+  showReturnTrip,
   loading,
   error,
   onRemoveHome,
@@ -84,6 +86,7 @@ export function ComparisonPanel({
   canCompare,
 }: ComparisonPanelProps) {
   const bestId = results.find((r) => r.status === 'OK')?.homeId
+  const hasReturn = showReturnTrip && results.some((r) => r.returnStatus)
 
   return (
     <div className="panel">
@@ -147,22 +150,32 @@ export function ComparisonPanel({
         <section className="panel__section">
           <h2 className="panel__heading">Results</h2>
           <p className="panel__subheading">{resultsSubheading(rankBy)}</p>
-          <div className="results-table">
+          <div className={`results-table ${hasReturn ? 'results-table--with-return' : ''}`}>
             <div className="results-table__header">
               <span>Home</span>
-              <span>Time</span>
+              <span>To work</span>
+              {hasReturn && <span>Return</span>}
               <span>Distance</span>
             </div>
             {results.map((result, index) => (
               <div
                 key={result.homeId}
-                className={`results-row ${result.homeId === bestId ? 'results-row--best' : ''}`}
+                className={`results-row ${result.homeId === bestId ? 'results-row--best' : ''} ${hasReturn ? 'results-row--with-return' : ''}`}
               >
                 <span className="results-row__rank">{index + 1}</span>
                 <span className="results-row__label">{result.homeLabel}</span>
                 <span className="results-row__time">
                   {result.status === 'OK' ? result.durationText : result.errorMessage}
                 </span>
+                {hasReturn && (
+                  <span className="results-row__time results-row__time--return">
+                    {result.returnStatus === 'OK'
+                      ? result.returnDurationText
+                      : result.returnStatus === 'ERROR'
+                        ? result.returnErrorMessage
+                        : '—'}
+                  </span>
+                )}
                 <span className="results-row__distance">
                   {result.status === 'OK' ? result.distanceText : '—'}
                 </span>

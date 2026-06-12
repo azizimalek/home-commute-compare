@@ -10,7 +10,7 @@ import type {
 } from '../types'
 
 const STORAGE_KEY = 'commute-compare-state'
-const VERSION = 2
+const VERSION = 3
 
 export interface PersistedAppState {
   version: typeof VERSION
@@ -22,6 +22,7 @@ export interface PersistedAppState {
   mapType: MapType
   rankBy: RankBy
   routePreference: RoutePreference
+  showReturnTrip: boolean
   results: CommuteResult[]
 }
 
@@ -43,6 +44,23 @@ export function loadPersistedState(): PersistedAppState | null {
         mapType: (parsed.mapType as MapType) ?? 'roadmap',
         rankBy: 'TIME',
         routePreference: 'NORMAL',
+        showReturnTrip: false,
+        results: (parsed.results as CommuteResult[]) ?? [],
+        version: VERSION,
+      }
+    }
+
+    if (version === 2) {
+      return {
+        work: (parsed.work as LocationPoint | null) ?? null,
+        homes: (parsed.homes as LocationPoint[]) ?? [],
+        markerMode: (parsed.markerMode as MarkerMode) ?? 'work',
+        interactionMode: (parsed.interactionMode as MapInteractionMode) ?? 'pan',
+        travelMode: (parsed.travelMode as TravelMode) ?? 'DRIVING',
+        mapType: (parsed.mapType as MapType) ?? 'roadmap',
+        rankBy: (parsed.rankBy as RankBy) ?? 'TIME',
+        routePreference: (parsed.routePreference as RoutePreference) ?? 'NORMAL',
+        showReturnTrip: false,
         results: (parsed.results as CommuteResult[]) ?? [],
         version: VERSION,
       }

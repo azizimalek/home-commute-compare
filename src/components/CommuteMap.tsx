@@ -22,6 +22,7 @@ interface CommuteMapProps {
   results: CommuteResult[]
   travelMode: TravelMode
   routePreference: RoutePreference
+  showReturnTrip: boolean
   markerMode: MarkerMode
   interactionMode: MapInteractionMode
   mapType: MapType
@@ -128,6 +129,7 @@ export function CommuteMap({
   results,
   travelMode,
   routePreference,
+  showReturnTrip,
   markerMode,
   interactionMode,
   mapType,
@@ -157,6 +159,7 @@ export function CommuteMap({
           results={results}
           travelMode={travelMode}
           routePreference={routePreference}
+          showReturnTrip={showReturnTrip}
         />
 
         {work && (

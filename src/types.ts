@@ -20,6 +20,8 @@ export interface LocationPoint {
   address?: string
 }
 
+export type TripDirection = 'OUTBOUND' | 'RETURN'
+
 export interface CommuteResult {
   homeId: string
   homeLabel: string
@@ -29,4 +31,10 @@ export interface CommuteResult {
   distanceMeters: number
   status: 'OK' | 'ERROR'
   errorMessage?: string
+  returnDurationText?: string
+  returnDurationSeconds?: number
+  returnDistanceText?: string
+  returnDistanceMeters?: number
+  returnStatus?: 'OK' | 'ERROR'
+  returnErrorMessage?: string
 }

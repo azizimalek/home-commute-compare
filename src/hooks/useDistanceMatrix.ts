@@ -1,5 +1,6 @@
 import { useCallback, useState, type Dispatch, type SetStateAction } from 'react'
 import { sortCommuteResults } from '../lib/compareUtils'
+import { fetchDistanceMatrix } from '../lib/distanceMatrix'
 import type { CommuteResult, LocationPoint, RankBy, TravelMode } from '../types'
 
 interface UseDistanceMatrixReturn {
@@ -11,9 +12,43 @@ interface UseDistanceMatrixReturn {
     work: LocationPoint,
     travelMode: TravelMode,
     rankBy: RankBy,
+    showReturnTrip: boolean,
   ) => void
   clearResults: () => void
   setResults: Dispatch<SetStateAction<CommuteResult[]>>
+}
+
+function parseElement(
+  element: google.maps.DistanceMatrixResponseElement | undefined,
+): Pick<
+  CommuteResult,
+  | 'durationText'
+  | 'durationSeconds'
+  | 'distanceText'
+  | 'distanceMeters'
+  | 'status'
+  | 'errorMessage'
+> {
+  if (!element || element.status !== 'OK') {
+    return {
+      durationText: '—',
+      durationSeconds: Infinity,
+      distanceText: '—',
+      distanceMeters: 0,
+      status: 'ERROR',
+      errorMessage: element?.status ?? 'No route found',
+    }
+  }
+
+  const duration = element.duration_in_traffic ?? element.duration
+
+  return {
+    durationText: duration.text,
+    durationSeconds: duration.value,
+    distanceText: element.distance.text,
+    distanceMeters: element.distance.value,
+    status: 'OK',
+  }
 }
 
 export function useDistanceMatrix(initialResults: CommuteResult[] = []): UseDistanceMatrixReturn {
@@ -22,7 +57,13 @@ export function useDistanceMatrix(initialResults: CommuteResult[] = []): UseDist
   const [error, setError] = useState<string | null>(null)
 
   const compare = useCallback(
-    (homes: LocationPoint[], work: LocationPoint, travelMode: TravelMode, rankBy: RankBy) => {
+    (
+      homes: LocationPoint[],
+      work: LocationPoint,
+      travelMode: TravelMode,
+      rankBy: RankBy,
+      showReturnTrip: boolean,
+    ) => {
       if (homes.length === 0) {
         setError('Add at least one home location to compare.')
         return
@@ -31,70 +72,47 @@ export function useDistanceMatrix(initialResults: CommuteResult[] = []): UseDist
       setLoading(true)
       setError(null)
 
-      const travelModeMap: Record<TravelMode, google.maps.TravelMode> = {
-        DRIVING: google.maps.TravelMode.DRIVING,
-        TRANSIT: google.maps.TravelMode.TRANSIT,
-        WALKING: google.maps.TravelMode.WALKING,
-        BICYCLING: google.maps.TravelMode.BICYCLING,
-      }
+      const homePoints = homes.map((h) => ({ lat: h.lat, lng: h.lng }))
+      const workPoint = { lat: work.lat, lng: work.lng }
 
-      const service = new google.maps.DistanceMatrixService()
-      const origins = homes.map((h) => new google.maps.LatLng(h.lat, h.lng))
-      const destination = new google.maps.LatLng(work.lat, work.lng)
+      void (async () => {
+        try {
+          const toWorkResponse = await fetchDistanceMatrix(homePoints, [workPoint], travelMode)
 
-      const request: google.maps.DistanceMatrixRequest = {
-        origins,
-        destinations: [destination],
-        travelMode: travelModeMap[travelMode],
-        unitSystem: google.maps.UnitSystem.METRIC,
-      }
+          let returnElements: google.maps.DistanceMatrixResponseElement[] = []
+          if (showReturnTrip) {
+            const returnResponse = await fetchDistanceMatrix([workPoint], homePoints, travelMode)
+            returnElements = returnResponse.rows[0]?.elements ?? []
+          }
 
-      if (travelMode === 'DRIVING') {
-        request.drivingOptions = {
-          departureTime: new Date(),
-          trafficModel: google.maps.TrafficModel.BEST_GUESS,
-        }
-      }
-
-      service.getDistanceMatrix(request, (response, status) => {
-        setLoading(false)
-
-        if (status !== 'OK' || !response) {
-          setError(`Distance Matrix request failed: ${status}`)
-          return
-        }
-
-        const commuteResults: CommuteResult[] = homes.map((home, index) => {
-          const element = response.rows[index]?.elements[0]
-
-          if (!element || element.status !== 'OK') {
-            return {
+          const commuteResults: CommuteResult[] = homes.map((home, index) => {
+            const outbound = parseElement(toWorkResponse.rows[index]?.elements[0])
+            const result: CommuteResult = {
               homeId: home.id,
               homeLabel: home.label,
-              durationText: '—',
-              durationSeconds: Infinity,
-              distanceText: '—',
-              distanceMeters: 0,
-              status: 'ERROR' as const,
-              errorMessage: element?.status ?? 'No route found',
+              ...outbound,
             }
-          }
 
-          const duration = element.duration_in_traffic ?? element.duration
+            if (showReturnTrip) {
+              const ret = parseElement(returnElements[index])
+              result.returnDurationText = ret.durationText
+              result.returnDurationSeconds = ret.durationSeconds
+              result.returnDistanceText = ret.distanceText
+              result.returnDistanceMeters = ret.distanceMeters
+              result.returnStatus = ret.status
+              result.returnErrorMessage = ret.errorMessage
+            }
 
-          return {
-            homeId: home.id,
-            homeLabel: home.label,
-            durationText: duration.text,
-            durationSeconds: duration.value,
-            distanceText: element.distance.text,
-            distanceMeters: element.distance.value,
-            status: 'OK' as const,
-          }
-        })
+            return result
+          })
 
-        setResults(sortCommuteResults(commuteResults, rankBy))
-      })
+          setResults(sortCommuteResults(commuteResults, rankBy))
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Compare failed')
+        } finally {
+          setLoading(false)
+        }
+      })()
     },
     [],
   )

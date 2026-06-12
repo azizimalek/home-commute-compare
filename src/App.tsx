@@ -56,6 +56,7 @@ function AppContent() {
   const [routePreference, setRoutePreference] = useState<RoutePreference>(
     saved?.routePreference ?? 'NORMAL',
   )
+  const [showReturnTrip, setShowReturnTrip] = useState(saved?.showReturnTrip ?? false)
   const [mapType, setMapType] = useState<MapType>(saved?.mapType ?? 'roadmap')
   const [focusPoint, setFocusPoint] = useState<{ lat: number; lng: number } | null>(null)
 
@@ -73,10 +74,11 @@ function AppContent() {
       travelMode,
       rankBy,
       routePreference,
+      showReturnTrip,
       mapType,
       results,
     })
-  }, [work, homes, markerMode, interactionMode, travelMode, rankBy, routePreference, mapType, results])
+  }, [work, homes, markerMode, interactionMode, travelMode, rankBy, routePreference, showReturnTrip, mapType, results])
 
   const placeLocation = useCallback(
     async (lat: number, lng: number, address?: string) => {
@@ -160,8 +162,8 @@ function AppContent() {
 
   const handleCompare = useCallback(() => {
     if (!work) return
-    compare(homes, work, travelMode, rankBy)
-  }, [compare, homes, work, travelMode, rankBy])
+    compare(homes, work, travelMode, rankBy, showReturnTrip)
+  }, [compare, homes, work, travelMode, rankBy, showReturnTrip])
 
   const handleClearAll = useCallback(() => {
     if (!window.confirm('Clear all locations, routes, and saved data?')) return
@@ -174,6 +176,7 @@ function AppContent() {
     setTravelMode('DRIVING')
     setRankBy('TIME')
     setRoutePreference('NORMAL')
+    setShowReturnTrip(false)
     setMapType('roadmap')
     setFocusPoint(null)
     clearResults()
@@ -314,6 +317,20 @@ function AppContent() {
                 <option value="SHORTCUT">Shortcut (shortest distance)</option>
               </select>
             </div>
+
+            <div className="toolbar__group">
+              <label className="toolbar__checkbox">
+                <input
+                  type="checkbox"
+                  checked={showReturnTrip}
+                  onChange={(e) => {
+                    setShowReturnTrip(e.target.checked)
+                    clearResults()
+                  }}
+                />
+                Show return trip (work → home) with time &amp; route
+              </label>
+            </div>
           </div>
 
           <ComparisonPanel
@@ -321,6 +338,7 @@ function AppContent() {
             homes={homes}
             work={work}
             rankBy={rankBy}
+            showReturnTrip={showReturnTrip}
             loading={loading}
             error={error}
             onRemoveHome={handleRemoveHome}
@@ -337,6 +355,7 @@ function AppContent() {
             results={results}
             travelMode={travelMode}
             routePreference={routePreference}
+            showReturnTrip={showReturnTrip}
             markerMode={markerMode}
             interactionMode={interactionMode}
             mapType={mapType}
